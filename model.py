@@ -114,6 +114,7 @@ class Structure:
     
     def solve(self):
         """Löst das System K*u=F und speichert Ergebnisse in den Knoten."""
+      
         # 1. Matrix und Vektor bauen
         K, F = self.assemble_system()
         
@@ -259,3 +260,39 @@ class Structure:
                 if x_i > 0 and z_i < nz - 1:
                     idx_bl = (z_i + 1) * nx + (x_i - 1)
                     self.add_Feder(idx, idx_bl, k=k_diag)
+                    
+    def stable_test(self):
+
+        #Freiheitsgrade und Lager überprüfen, damit die Optimierung durchgeführt werden kann.
+        fixed_nodes = 0
+        fixed_dofs = 0
+        festlager = 0
+        loslager = 0
+
+        for m in self.massepunkte:
+            if np.any(m.fixed):
+                fixed_nodes += 1
+                n_fixed = np.sum(m.fixed)
+                fixed_dofs += n_fixed
+
+                if n_fixed == self.dim:
+                    festlager += 1
+                else:
+                    loslager += 1
+
+        # Verschiedene Fehlermeldungen ausgeben, je nach Fehler
+        required_dofs = 3 if self.dim == 2 else 6
+
+        if fixed_nodes < 2:
+            return False, "Mindestens 2 Lager werden gebraucht!"
+
+        if fixed_dofs < required_dofs:
+            return False, f"Es werden mindestens {required_dofs} fixierte Freiheitsgrade benötigt!"
+
+        if festlager < 1:
+            return False, "Mindestens 1 Festlager wird benötigt!"
+
+        if loslager < 1:
+            return False, "Mindestens 1 Loslager wird benötigt!"
+
+        return True, "Struktur stabil."
