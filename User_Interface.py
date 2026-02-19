@@ -146,7 +146,9 @@ if st.session_state.structure:
     # Plot der Ausgangslage mit Randbedingungen, Kräften und eventuell Symmetrielinie
     st.pyplot(plot_with_stresses(s, "Vorschau", e_mod, w, h, vis_factor=0, is_setup_view=True, draw_sym_line=st.session_state.use_symmetry))
 
+    #tabs für Randbedingungen und Optimierung
     tab1, tab2 = st.tabs(["Randbedingungen", "Optimierung"])
+    
     with tab1:
         c1, c2 = st.columns(2)
         def get_node(x, z):
@@ -154,18 +156,19 @@ if st.session_state.structure:
             return min(s.massepunkte, key=lambda m: np.linalg.norm(m.coords - target))
         with c1:
             st.markdown("**Lager**")
-            lx = st.number_input("Position X", 0.0, w, 0.0, key="lx_in")
-            lz = st.number_input("Position Z", 0.0, h, h, key="lz_in")
+            lx = st.number_input("Position X", 0.0, w, 0.0, key="lx_in", step=1.0)
+            lz = st.number_input("Position Z", 0.0, h, h, key="lz_in", step=1.0)
             ltype = st.radio("Typ", ["Festlager (∆)", "Loslager (○)"], key="ltype_in")
             if st.button("Lager anwenden"):
                 clean_type = "Festlager" if "Fest" in ltype else "Loslager"
                 st.session_state.constraints.append({"type": clean_type, "x": lx, "z": lz})
                 st.rerun()
         with c2:
+            # Kraft mit Richtung und Betrag ändern // steps in 1.0 schritten
             st.markdown("**Kraft**")
-            kx = st.number_input("Position X", 0.0, w, w/2, key="kx_in")
-            kz = st.number_input("Position Z", 0.0, h, 0.0, key="kz_in")
-            fv = st.number_input("Betrag (N)", value=5000.0, key="fv_in")
+            kx = st.number_input("Position X", 0.0, w, w/2, key="kx_in", step=1.0)
+            kz = st.number_input("Position Z", 0.0, h, 0.0, key="kz_in", step=1.0)
+            fv = st.number_input("Betrag (N)", value=5000.0, key="fv_in", step=500.0)
             fw = st.number_input("Winkel (°)", 0.0, 360.0, 270.0, step=45.0, key="fw_in")
             if st.button("Kraft anwenden"): 
                 st.session_state.constraints.append({"type": "Kraft", "x": kx, "z": kz, "val": fv, "angle": fw}) 
@@ -196,12 +199,18 @@ if st.session_state.structure:
         else:
             st.info("Die Liste ist leer. Füge oben Lager oder Kräfte hinzu.")
         st.divider()
-        
+
+        col1, col2 = st.columns([1,1])
+
         # Reset Button
-        if st.button("Alles löschen (Reset)"):
-            st.session_state.constraints = [] # Liste leeren!
-            apply_constraints(s) # Modell leeren
-            st.rerun()
+        with col1:
+            if st.button("Alles löschen (Reset)"):
+                st.session_state.constraints = [] # Liste leeren!
+                apply_constraints(s) # Modell leeren
+                st.rerun()
+        # Zu Optimierung wechseln
+        with col2:
+            st.text("Nun weiter zur Optimierung!")
 
     with tab2:
         # Checkbox Symetrie-Modus
@@ -213,6 +222,14 @@ if st.session_state.structure:
         
         if st.button("Optimierung starten", type="primary"):
             apply_constraints(s)
+            
+            # Testen ob Struktur stabil ist, bevor optimiert wird
+            stable, message = s.stable_test()
+            if not stable:
+                st.error(f"Die Struktur ist instabil: {message} :(")
+                st.stop()
+            st.success("Die Struktur ist stabil! Starte Optimierung...")
+
             # Volle Struktur nutzen
             c_struct = s 
             for m in c_struct.massepunkte: m.active, m.displacement[:] = True, 0
