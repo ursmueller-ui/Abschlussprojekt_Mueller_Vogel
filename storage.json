@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Aluminium Tr\u00e4ger",
+    "date": "2026-02-22 18:21",
+    "width": 25.0,
+    "height": 10.0,
+    "nx": 16,
+    "nz": 6,
+    "res": 1.5,
+    "e_mod": 70000.0,
+    "constraints": [
+      {
+        "type": "Festlager",
+        "x": 24.0,
+        "z": 10.0
+      },
+      {
+        "type": "Kraft",
+        "x": 15.0,
+        "z": 0.0,
+        "val": 4.0,
+        "angle": 270.0
+      },
+      {
+        "type": "Loslager",
+        "x": 0.0,
+        "z": 10.0
+      }
+    ],
+    "symmetry": false,
+    "target_mass": 0.66,
+    "step": 0.02
+  },
+  {
+    "name": "Holzbalken",
+    "date": "2026-02-22 18:19",
+    "width": 30.0,
+    "height": 10.0,
+    "nx": 20,
+    "nz": 6,
+    "res": 1.5,
+    "e_mod": 10000.0,
+    "constraints": [
+      {
+        "type": "Loslager",
+        "x": 0.0,
+        "z": 10.0
+      },
+      {
+        "type": "Festlager",
+        "x": 30.0,
+        "z": 10.0
+      },
+      {
+        "type": "Kraft",
+        "x": 15.0,
+        "z": 0.0,
+        "val": 2500.0,
+        "angle": 270.0
+      }
+    ],
+    "symmetry": false,
+    "target_mass": 0.7,
+    "step": 0.02
+  }
+]

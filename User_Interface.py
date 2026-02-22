@@ -3,7 +3,9 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg') # matplotlib im Hintergrundmodus für Streamlit
 import matplotlib.pyplot as plt
+import io
 from model import Structure
+from model_storage import save_model, load_all_models, get_model_names
 
 # speichert bei neu laden den alten Stand
 if 'structure' not in st.session_state:
@@ -14,9 +16,109 @@ if 'use_symmetry' not in st.session_state:
     st.session_state.use_symmetry = False
 if 'constraints' not in st.session_state:
     st.session_state.constraints = []
+if 'res' not in st.session_state:
+    st.session_state.res = None
+if 'name' not in st.session_state:
+    st.session_state.name = None
 
 st.set_page_config(page_title="FEM Optimierung", layout="wide")
 st.title("FEM Optimierer")
+
+st.subheader("Gespeicherte Modelle")
+
+models = load_all_models()
+
+if models:
+
+    # Anzeige-Text für jedes Modell erzeugen
+    selected_index = st.selectbox(
+    "Modell auswählen",
+    range(len(models)),
+    format_func=lambda i: f" {models[i]['name']} ({models[i]['date']})"
+    )
+    m = models[selected_index]
+    # Details zum Modell anzeigen
+    st.markdown(
+        f"""
+    **Geometrie:** {m['width']} × {m['height']} m  
+    **Mesh:** {m['nx']} × {m['nz']} Knoten  
+    **Material:** E = {m['e_mod']} N/mm²  
+    **Randbedingungen:** {len(m['constraints'])} Einträge  
+    """
+    )
+
+    col1, col2 = st.columns([1,3])
+
+    with col1:
+        if st.button("Modell laden"):
+
+            params = models[selected_index]
+
+            # Parameter in session_state laden
+            st.session_state.dims = (params["width"], params["height"])
+            st.session_state.e_modul = params["e_mod"]
+            st.session_state.constraints = params["constraints"]
+            st.session_state.use_symmetry = params["symmetry"]
+            st.session_state.res = params["width"] / (params["nx"] - 1)
+            st.session_state.name = params["name"]
+
+            nx = params["nx"]
+            nz = params["nz"]
+            e_mod = params["e_mod"]
+
+            # Struktur neu erzeugen
+
+            s = Structure(dim=2)
+            # Grundstruktur wieder erzeugen
+            s.generate_rect_mesh(params["nx"], params["nz"], params["width"], params["height"])
+
+            for f in s.federn: f.k = params["e_mod"] / st.session_state.res
+
+            for m in s.massepunkte:
+                m.active = True
+                m.displacement[:] = 0.0
+                m.force[:] = 0.0
+                m.fixed[:] = False
+
+            st.session_state.structure = s
+
+            st.success("Modell geladen")
+            st.rerun()
+
+else:
+    st.info("Noch keine gespeicherten Modelle vorhanden.")
+
+# Funktion um Parameter eines Modells zu speichern
+
+def save_current_model(target, step, name):
+
+    width, height = st.session_state.dims
+
+    save_model(
+        name=name,
+
+        width=width,
+        height=height,
+
+        nx=int(width / st.session_state.res),
+        nz=int(height / st.session_state.res),
+        res=st.session_state.res,
+
+        e_mod=st.session_state.e_modul,
+
+        constraints=st.session_state.constraints,
+
+        symmetry=st.session_state.use_symmetry,
+
+        target_mass=target,
+        step=step
+    )
+# Funktion um Figur herunterzuladen
+def fig_to_png_bytes(fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=300, bbox_inches="tight")
+    buf.seek(0)
+    return buf
 
 # Sidebar----------------------------------------------------------
 with st.sidebar:
@@ -33,10 +135,18 @@ with st.sidebar:
     if st.button("Gitter neu erzeugen", type="primary"):
         nx = int(width / res); nx = nx + 1 if nx % 2 == 0 else nx   # Kontenanzahl, immer ungerade für Symmetrie
         nz = int(height / res); nz = nz + 1 if nz % 2 == 0 else nz
-        s = Structure(dim=2); s.generate_rect_mesh(nx, nz, width, height)   # Gitter erzeugen basierend auf Breite, Höhe und Auflösung
+        s = Structure(dim=2)
+        s.generate_rect_mesh(nx, nz, width, height)   # Gitter erzeugen basierend auf Breite, Höhe und Auflösung
         for f in s.federn: f.k = e_modul / res
-        st.session_state.structure = s; st.session_state.dims = (width, height); st.session_state.e_modul = e_modul # Model speichern
-        st.session_state.last_result_fig = None; st.rerun()
+        st.session_state.structure = s
+        st.session_state.dims = (width, height)
+        st.session_state.e_modul = e_modul # Model speichern
+        st.session_state.last_result_fig = None
+        st.session_state.res = res
+        st.session_state.constraints = [] # Alle Randbedingungen zurücksetzen
+        st.session_state.use_symmetry = False
+        st.session_state.name = None
+        st.rerun()
 
 # Plot Gitter Mash--------------------------------------------------------------------
 def plot_with_stresses(structure, title, e_mod, w_orig, h_orig, vis_factor, is_setup_view=False, current_mass_pct=None, draw_sym_line=False):
@@ -216,11 +326,13 @@ if st.session_state.structure:
         # Checkbox Symetrie-Modus
         st.session_state.use_symmetry = st.checkbox("Symmetrie-Modus nutzen (Spiegelt Materialabtrag)", value=st.session_state.use_symmetry)
 
-        target = st.slider("Ziel-Masse (%)", 5, 100, 50) / 100.0
+        target = st.slider("Ziel-Masse (%)", 5, 100, 70) / 100.0
         step = st.slider("Schrittweite", 0.01, 0.1, 0.02)
         vis = st.slider("Verformungs-Faktor", 1.0, 10.0, 1.0)
         
-        if st.button("Optimierung starten", type="primary"):
+        st.session_state.name = st.text_input("Name des Modells", placeholder="z.B. Holzbalken mit mittiger Last", value = st.session_state.name if st.session_state.name else "")
+
+        if st.button("Optimierung starten", type="primary", disabled=not st.session_state.name.strip()):
             apply_constraints(s)
             
             # Testen ob Struktur stabil ist, bevor optimiert wird
@@ -229,6 +341,10 @@ if st.session_state.structure:
                 st.error(f"Die Struktur ist instabil: {message} :(")
                 st.stop()
             st.success("Die Struktur ist stabil! Starte Optimierung...")
+
+            # Parameter speichern für später, wenn es ein Neues Modell ist
+            if (st.session_state.name.strip() not in get_model_names()):
+                save_current_model(target, step, st.session_state.name.strip())
 
             # Volle Struktur nutzen
             c_struct = s 
@@ -274,14 +390,26 @@ if st.session_state.structure:
                     for idx_left, idx_right in partner_map.items():
                         # Wenn einer der beiden inaktiv ist, muss der andere es auch sein
                         if not c_struct.massepunkte[idx_left].active or not c_struct.massepunkte[idx_right].active:
-                             c_struct.massepunkte[idx_left].active = False
-                             c_struct.massepunkte[idx_right].active = False
+                            c_struct.massepunkte[idx_left].active = False
+                            c_struct.massepunkte[idx_right].active = False
 
                 # 5. Plotten der aktuellen Struktur mit Spannungen
                 curr_m = len([m for m in c_struct.massepunkte if m.active]) / len(c_struct.massepunkte)
                 fig = plot_with_stresses(c_struct, "Optimierung", e_mod, w, h, vis, 
-                                       draw_sym_line=st.session_state.use_symmetry, 
-                                       current_mass_pct=curr_m*100)
+                                    draw_sym_line=st.session_state.use_symmetry, 
+                                    current_mass_pct=curr_m*100)
                 plot_spot.pyplot(fig); plt.close(fig)
 
             st.session_state.last_result_fig = fig
+
+            # Ergebnis kann als PNG heruntergeladen werden
+            if st.session_state.last_result_fig:
+
+                png_bytes = fig_to_png_bytes(st.session_state.last_result_fig)
+
+                st.download_button(
+                    label="Geometrie als PNG herunterladen",
+                    data=png_bytes,
+                    file_name="optimierte_geometrie.png",
+                    mime="image/png"
+                )

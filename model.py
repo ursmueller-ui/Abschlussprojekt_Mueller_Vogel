@@ -281,6 +281,7 @@ class Structure:
                     loslager += 1
 
         # Verschiedene Fehlermeldungen ausgeben, je nach Fehler
+        # In 2D brauchen wir 3 fixierte Freiheitsgrade in 3D brauchen wir 6 fixierte Freiheitsgrade
         required_dofs = 3 if self.dim == 2 else 6
 
         if fixed_nodes < 2:
